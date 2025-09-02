@@ -1,10 +1,10 @@
-from sqlmodel import SQLModel, Field, Relationship, JSON, Column
+from sqlmodel import SQLModel, Field, Relationship, Column, JSON
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from enum import Enum
 
 
-# Enums for better type safety
+# Enums for type safety
 class GradeLevel(str, Enum):
     GRADE_4 = "grade_4"
     GRADE_5 = "grade_5"
@@ -12,8 +12,8 @@ class GradeLevel(str, Enum):
 
 
 class UserRole(str, Enum):
-    TEACHER = "teacher"
     STUDENT = "student"
+    TEACHER = "teacher"
     ADMIN = "admin"
 
 
@@ -23,40 +23,37 @@ class DifficultyLevel(str, Enum):
     HARD = "hard"
 
 
-class ContentType(str, Enum):
+class MaterialType(str, Enum):
+    LESSON_PLAN = "lesson_plan"
     PRESENTATION = "presentation"
     TEXT = "text"
     IMAGE = "image"
-    VIDEO = "video"
-    AUDIO = "audio"
-    DOCUMENT = "document"
+    ACTIVITY_SHEET = "activity_sheet"
+    GUIDE = "guide"
 
 
-class HistoricalPeriod(str, Enum):
-    PREHISTORIC = "prehistoric"
-    HINDU_BUDDHIST = "hindu_buddhist"
-    ISLAMIC_KINGDOMS = "islamic_kingdoms"
-    COLONIAL_DUTCH = "colonial_dutch"
-    COLONIAL_JAPANESE = "colonial_japanese"
-    INDEPENDENCE = "independence"
-    POST_INDEPENDENCE = "post_independence"
+class QuizQuestionType(str, Enum):
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+    FILL_IN_THE_BLANK = "fill_in_the_blank"
 
 
-class RewardType(str, Enum):
-    POINTS = "points"
-    BADGE = "badge"
-    POWER_UP = "power_up"
-    ACHIEVEMENT = "achievement"
+class BadgeType(str, Enum):
+    LEVEL_COMPLETION = "level_completion"
+    STREAK = "streak"
+    PERFECT_SCORE = "perfect_score"
+    EXPLORER = "explorer"
+    HISTORIAN = "historian"
 
 
-# User Management
+# Base User Model
 class User(SQLModel, table=True):
     __tablename__ = "users"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    username: str = Field(max_length=100, unique=True)
+    username: str = Field(max_length=50, unique=True)
     email: str = Field(max_length=255, unique=True)
-    full_name: str = Field(max_length=200)
+    full_name: str = Field(max_length=100)
     role: UserRole = Field(default=UserRole.STUDENT)
     grade_level: Optional[GradeLevel] = Field(default=None)
     school_name: Optional[str] = Field(default=None, max_length=200)
@@ -65,418 +62,379 @@ class User(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    learning_modules: List["LearningModule"] = Relationship(back_populates="teacher")
-    quiz_sessions: List["QuizSession"] = Relationship(back_populates="student")
-    rewards: List["StudentReward"] = Relationship(back_populates="student")
-    progress_records: List["StudentProgress"] = Relationship(back_populates="student")
+    quiz_attempts: List["QuizAttempt"] = Relationship(back_populates="user")
+    user_progress: List["UserProgress"] = Relationship(back_populates="user")
+    user_badges: List["UserBadge"] = Relationship(back_populates="user")
 
 
-# 1. Learning Module System
+# Historical Periods
+class HistoricalPeriod(SQLModel, table=True):
+    __tablename__ = "historical_periods"  # type: ignore[assignment]
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=200)
+    description: str = Field(max_length=1000)
+    start_year: Optional[int] = Field(default=None)
+    end_year: Optional[int] = Field(default=None)
+    image_url: Optional[str] = Field(default=None, max_length=500)
+    display_order: int = Field(default=0)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    learning_modules: List["LearningModule"] = Relationship(back_populates="historical_period")
+    quiz_levels: List["QuizLevel"] = Relationship(back_populates="historical_period")
+    historical_figures: List["HistoricalFigure"] = Relationship(back_populates="historical_period")
+
+
+# Learning Modules Feature
 class LearningModule(SQLModel, table=True):
     __tablename__ = "learning_modules"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(max_length=200)
     description: str = Field(max_length=1000)
+    historical_period_id: int = Field(foreign_key="historical_periods.id")
     grade_level: GradeLevel
-    historical_period: HistoricalPeriod
     curriculum_alignment: str = Field(max_length=500)
     learning_objectives: List[str] = Field(default=[], sa_column=Column(JSON))
-    teacher_id: int = Field(foreign_key="users.id")
-    is_published: bool = Field(default=False)
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    teacher: User = Relationship(back_populates="learning_modules")
-    lesson_plans: List["LessonPlan"] = Relationship(back_populates="module")
-    teaching_materials: List["TeachingMaterial"] = Relationship(back_populates="module")
-    student_activities: List["StudentActivity"] = Relationship(back_populates="module")
-
-
-class LessonPlan(SQLModel, table=True):
-    __tablename__ = "lesson_plans"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    module_id: int = Field(foreign_key="learning_modules.id")
-    title: str = Field(max_length=200)
-    duration_minutes: int = Field(gt=0)
-    objectives: List[str] = Field(default=[], sa_column=Column(JSON))
-    activities: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSON))
-    assessment_criteria: List[str] = Field(default=[], sa_column=Column(JSON))
-    gamification_elements: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    # Relationships
-    module: LearningModule = Relationship(back_populates="lesson_plans")
+    historical_period: HistoricalPeriod = Relationship(back_populates="learning_modules")
+    teaching_materials: List["TeachingMaterial"] = Relationship(back_populates="learning_module")
 
 
 class TeachingMaterial(SQLModel, table=True):
     __tablename__ = "teaching_materials"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    module_id: int = Field(foreign_key="learning_modules.id")
-    title: str = Field(max_length=200)
-    content_type: ContentType
-    file_url: str = Field(max_length=500)
-    description: Optional[str] = Field(default=None, max_length=500)
-    file_metadata: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    is_validated: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    # Relationships
-    module: LearningModule = Relationship(back_populates="teaching_materials")
-
-
-class StudentActivity(SQLModel, table=True):
-    __tablename__ = "student_activities"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    module_id: int = Field(foreign_key="learning_modules.id")
     title: str = Field(max_length=200)
     description: str = Field(max_length=1000)
-    activity_type: str = Field(max_length=100)  # collaborative, explorative, individual
-    instructions: List[str] = Field(default=[], sa_column=Column(JSON))
-    resources_needed: List[str] = Field(default=[], sa_column=Column(JSON))
-    estimated_duration: int = Field(gt=0)  # in minutes
+    learning_module_id: int = Field(foreign_key="learning_modules.id")
+    material_type: MaterialType
+    file_url: Optional[str] = Field(default=None, max_length=500)
+    content: Optional[str] = Field(default=None)
+    material_metadata: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    is_validated: bool = Field(default=False)
+    display_order: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    module: LearningModule = Relationship(back_populates="student_activities")
+    learning_module: LearningModule = Relationship(back_populates="teaching_materials")
 
 
-# 2. Quiz Adventure System
+# Quiz Adventure Feature
 class QuizLevel(SQLModel, table=True):
     __tablename__ = "quiz_levels"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    level_number: int = Field(ge=1)
-    title: str = Field(max_length=200)
-    historical_period: HistoricalPeriod
-    description: str = Field(max_length=500)
+    name: str = Field(max_length=200)
+    description: str = Field(max_length=1000)
+    historical_period_id: int = Field(foreign_key="historical_periods.id")
+    level_number: int
     unlock_requirements: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    reward_points: int = Field(default=100, ge=0)
+    rewards: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.EASY)
+    points_reward: int = Field(default=100)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    questions: List["QuizQuestion"] = Relationship(back_populates="level")
-    sessions: List["QuizSession"] = Relationship(back_populates="level")
+    historical_period: HistoricalPeriod = Relationship(back_populates="quiz_levels")
+    quiz_questions: List["QuizQuestion"] = Relationship(back_populates="quiz_level")
+    quiz_attempts: List["QuizAttempt"] = Relationship(back_populates="quiz_level")
 
 
 class QuizQuestion(SQLModel, table=True):
     __tablename__ = "quiz_questions"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    level_id: int = Field(foreign_key="quiz_levels.id")
+    quiz_level_id: int = Field(foreign_key="quiz_levels.id")
     question_text: str = Field(max_length=1000)
-    question_type: str = Field(max_length=50)  # multiple_choice, true_false, fill_blank
+    question_type: QuizQuestionType
     options: List[str] = Field(default=[], sa_column=Column(JSON))
     correct_answer: str = Field(max_length=500)
     explanation: str = Field(max_length=1000)
-    difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
-    points: int = Field(default=10, ge=1)
-    media_url: Optional[str] = Field(default=None, max_length=500)
+    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.EASY)
+    points_value: int = Field(default=10)
+    image_url: Optional[str] = Field(default=None, max_length=500)
+    display_order: int = Field(default=0)
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    level: QuizLevel = Relationship(back_populates="questions")
+    quiz_level: QuizLevel = Relationship(back_populates="quiz_questions")
 
 
-class QuizSession(SQLModel, table=True):
-    __tablename__ = "quiz_sessions"  # type: ignore[assignment]
+class QuizAttempt(SQLModel, table=True):
+    __tablename__ = "quiz_attempts"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    student_id: int = Field(foreign_key="users.id")
-    level_id: int = Field(foreign_key="quiz_levels.id")
-    start_time: datetime = Field(default_factory=datetime.utcnow)
-    end_time: Optional[datetime] = Field(default=None)
-    score: int = Field(default=0, ge=0)
-    total_questions: int = Field(ge=1)
-    correct_answers: int = Field(default=0, ge=0)
+    user_id: int = Field(foreign_key="users.id")
+    quiz_level_id: int = Field(foreign_key="quiz_levels.id")
+    score: int = Field(default=0)
+    max_score: int
+    completion_time: Optional[int] = Field(default=None)  # in seconds
+    answers: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
     is_completed: bool = Field(default=False)
-    answers: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSON))
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = Field(default=None)
 
     # Relationships
-    student: User = Relationship(back_populates="quiz_sessions")
-    level: QuizLevel = Relationship(back_populates="sessions")
+    user: User = Relationship(back_populates="quiz_attempts")
+    quiz_level: QuizLevel = Relationship(back_populates="quiz_attempts")
 
 
-class StudentReward(SQLModel, table=True):
-    __tablename__ = "student_rewards"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    student_id: int = Field(foreign_key="users.id")
-    reward_type: RewardType
-    title: str = Field(max_length=200)
-    description: str = Field(max_length=500)
-    points_value: int = Field(default=0, ge=0)
-    icon_url: Optional[str] = Field(default=None, max_length=500)
-    earned_at: datetime = Field(default_factory=datetime.utcnow)
-    source_activity: str = Field(max_length=200)  # quiz, vocabulary, diary, etc.
-
-    # Relationships
-    student: User = Relationship(back_populates="rewards")
-
-
-# 3. Vocab Explorer System
+# Vocab Explorer Feature
 class VocabularyTerm(SQLModel, table=True):
     __tablename__ = "vocabulary_terms"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     term: str = Field(max_length=200, unique=True)
-    definition: str = Field(max_length=1000)
-    historical_period: HistoricalPeriod
-    etymology: Optional[str] = Field(default=None, max_length=500)
-    pronunciation: Optional[str] = Field(default=None, max_length=200)
+    definition: str = Field(max_length=2000)
+    pronunciation: Optional[str] = Field(default=None, max_length=500)
     audio_url: Optional[str] = Field(default=None, max_length=500)
-    image_url: Optional[str] = Field(default=None, max_length=500)
-    example_usage: Optional[str] = Field(default=None, max_length=500)
-    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
-    tags: List[str] = Field(default=[], sa_column=Column(JSON))
+    image_urls: List[str] = Field(default=[], sa_column=Column(JSON))
+    historical_context: Optional[str] = Field(default=None, max_length=2000)
+    related_periods: List[int] = Field(default=[], sa_column=Column(JSON))
+    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.EASY)
+    usage_count: int = Field(default=0)
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    term_connections: List["TermConnection"] = Relationship(
+        back_populates="source_term", sa_relationship_kwargs={"foreign_keys": "TermConnection.source_term_id"}
+    )
+    connected_terms: List["TermConnection"] = Relationship(
+        back_populates="target_term", sa_relationship_kwargs={"foreign_keys": "TermConnection.target_term_id"}
+    )
 
 
-class VocabularyConnection(SQLModel, table=True):
-    __tablename__ = "vocabulary_connections"  # type: ignore[assignment]
+class TermConnection(SQLModel, table=True):
+    __tablename__ = "term_connections"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     source_term_id: int = Field(foreign_key="vocabulary_terms.id")
     target_term_id: int = Field(foreign_key="vocabulary_terms.id")
-    connection_type: str = Field(max_length=100)  # synonym, antonym, related, cause_effect, etc.
+    connection_type: str = Field(max_length=100)  # e.g., "related_to", "part_of", "caused_by"
     description: Optional[str] = Field(default=None, max_length=500)
-    strength: int = Field(default=1, ge=1, le=5)  # connection strength 1-5
+    strength: int = Field(default=1)  # 1-5 scale
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    # Relationships
+    source_term: VocabularyTerm = Relationship(
+        back_populates="term_connections", sa_relationship_kwargs={"foreign_keys": "TermConnection.source_term_id"}
+    )
+    target_term: VocabularyTerm = Relationship(
+        back_populates="connected_terms", sa_relationship_kwargs={"foreign_keys": "TermConnection.target_term_id"}
+    )
 
-# 4. Hero's Diary System
+
+# Hero's Diary Feature
 class HistoricalFigure(SQLModel, table=True):
     __tablename__ = "historical_figures"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=200)
-    birth_date: Optional[str] = Field(default=None, max_length=50)  # flexible date format
-    death_date: Optional[str] = Field(default=None, max_length=50)
-    birth_place: Optional[str] = Field(default=None, max_length=200)
-    historical_period: HistoricalPeriod
-    role_title: str = Field(max_length=200)  # Sultan, Pahlawan, Tokoh Pendidikan, etc.
+    birth_date: Optional[datetime] = Field(default=None)
+    death_date: Optional[datetime] = Field(default=None)
     biography: str = Field(max_length=5000)
-    major_achievements: List[str] = Field(default=[], sa_column=Column(JSON))
-    historical_context: str = Field(max_length=2000)
+    historical_period_id: int = Field(foreign_key="historical_periods.id")
+    role_description: str = Field(max_length=1000)
     portrait_url: Optional[str] = Field(default=None, max_length=500)
-    is_featured: bool = Field(default=False)
+    achievements: List[str] = Field(default=[], sa_column=Column(JSON))
+    famous_quotes: List[str] = Field(default=[], sa_column=Column(JSON))
+    historical_significance: str = Field(max_length=2000)
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    diary_entries: List["DiaryEntry"] = Relationship(back_populates="figure")
-    timeline_events: List["TimelineEvent"] = Relationship(back_populates="figure")
-    multimedia_content: List["MultimediaContent"] = Relationship(back_populates="figure")
+    historical_period: HistoricalPeriod = Relationship(back_populates="historical_figures")
+    diary_entries: List["DiaryEntry"] = Relationship(back_populates="historical_figure")
+    multimedia_items: List["MultimediaItem"] = Relationship(back_populates="historical_figure")
+    ar_models: List["ARModel"] = Relationship(back_populates="historical_figure")
 
 
 class DiaryEntry(SQLModel, table=True):
     __tablename__ = "diary_entries"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    figure_id: int = Field(foreign_key="historical_figures.id")
+    historical_figure_id: int = Field(foreign_key="historical_figures.id")
     title: str = Field(max_length=200)
-    entry_date: str = Field(max_length=50)  # historical date in flexible format
     content: str = Field(max_length=5000)
-    emotional_tone: str = Field(max_length=100)  # hopeful, worried, determined, etc.
-    historical_context: str = Field(max_length=1000)
-    is_fictional: bool = Field(default=True)  # most diary entries are interpretive
-    order_sequence: int = Field(default=1, ge=1)
+    entry_date: datetime  # Historical date the entry represents
+    emotional_tone: Optional[str] = Field(default=None, max_length=100)
+    key_events: List[str] = Field(default=[], sa_column=Column(JSON))
+    historical_context: str = Field(max_length=2000)
+    display_order: int = Field(default=0)
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    figure: HistoricalFigure = Relationship(back_populates="diary_entries")
+    historical_figure: HistoricalFigure = Relationship(back_populates="diary_entries")
 
 
-class TimelineEvent(SQLModel, table=True):
-    __tablename__ = "timeline_events"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    figure_id: int = Field(foreign_key="historical_figures.id")
-    event_title: str = Field(max_length=200)
-    event_date: str = Field(max_length=50)
-    description: str = Field(max_length=1000)
-    significance: str = Field(max_length=500)
-    location: Optional[str] = Field(default=None, max_length=200)
-    related_figures: List[str] = Field(default=[], sa_column=Column(JSON))
-    order_sequence: int = Field(default=1, ge=1)
-    is_major_event: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    # Relationships
-    figure: HistoricalFigure = Relationship(back_populates="timeline_events")
-
-
-class MultimediaContent(SQLModel, table=True):
-    __tablename__ = "multimedia_content"  # type: ignore[assignment]
+class MultimediaItem(SQLModel, table=True):
+    __tablename__ = "multimedia_items"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    figure_id: int = Field(foreign_key="historical_figures.id")
+    historical_figure_id: int = Field(foreign_key="historical_figures.id")
     title: str = Field(max_length=200)
-    content_type: ContentType
+    description: str = Field(max_length=1000)
+    media_type: str = Field(max_length=50)  # photo, document, audio, video
     file_url: str = Field(max_length=500)
-    description: str = Field(max_length=500)
-    source_attribution: Optional[str] = Field(default=None, max_length=300)
-    is_primary_source: bool = Field(default=False)
-    file_metadata: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    thumbnail_url: Optional[str] = Field(default=None, max_length=500)
+    media_metadata: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    display_order: int = Field(default=0)
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    figure: HistoricalFigure = Relationship(back_populates="multimedia_content")
+    historical_figure: HistoricalFigure = Relationship(back_populates="multimedia_items")
 
 
-# 5. Augmented Reality System
-class ARTrigger(SQLModel, table=True):
-    __tablename__ = "ar_triggers"  # type: ignore[assignment]
+# Augmented Reality Feature
+class ARModel(SQLModel, table=True):
+    __tablename__ = "ar_models"  # type: ignore[assignment]
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    historical_figure_id: int = Field(foreign_key="historical_figures.id")
+    model_name: str = Field(max_length=200)
+    model_file_url: str = Field(max_length=500)
+    texture_urls: List[str] = Field(default=[], sa_column=Column(JSON))
+    animation_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    trigger_images: List[str] = Field(default=[], sa_column=Column(JSON))  # Images that trigger AR
+    interaction_scripts: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSON))
+    scale_factor: float = Field(default=1.0)
+    position_offset: Dict[str, float] = Field(default={}, sa_column=Column(JSON))
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    historical_figure: HistoricalFigure = Relationship(back_populates="ar_models")
+
+
+# Gamification System
+class Badge(SQLModel, table=True):
+    __tablename__ = "badges"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=200)
-    trigger_type: str = Field(max_length=100)  # banknote, stamp, textbook_image, qr_code
-    reference_image_url: str = Field(max_length=500)
-    description: str = Field(max_length=500)
-    recognition_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))  # image processing metadata
+    description: str = Field(max_length=1000)
+    badge_type: BadgeType
+    icon_url: str = Field(max_length=500)
+    requirements: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    points_value: int = Field(default=50)
+    rarity_level: int = Field(default=1)  # 1-5 scale
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationships
-    ar_experiences: List["ARExperience"] = Relationship(back_populates="trigger")
+    user_badges: List["UserBadge"] = Relationship(back_populates="badge")
 
 
-class ARExperience(SQLModel, table=True):
-    __tablename__ = "ar_experiences"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    trigger_id: int = Field(foreign_key="ar_triggers.id")
-    figure_id: Optional[int] = Field(default=None, foreign_key="historical_figures.id")
-    title: str = Field(max_length=200)
-    description: str = Field(max_length=500)
-    model_3d_url: str = Field(max_length=500)
-    animation_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    interaction_scripts: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSON))
-    audio_narration_url: Optional[str] = Field(default=None, max_length=500)
-    duration_seconds: int = Field(default=60, ge=1)
-    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
-    educational_objectives: List[str] = Field(default=[], sa_column=Column(JSON))
-    is_published: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-    # Relationships
-    trigger: ARTrigger = Relationship(back_populates="ar_experiences")
-
-
-class ARInteraction(SQLModel, table=True):
-    __tablename__ = "ar_interactions"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    experience_id: int = Field(foreign_key="ar_experiences.id")
-    interaction_type: str = Field(max_length=100)  # tap, gesture, voice, proximity
-    trigger_condition: str = Field(max_length=200)
-    response_action: str = Field(max_length=200)
-    dialogue_text: Optional[str] = Field(default=None, max_length=1000)
-    audio_response_url: Optional[str] = Field(default=None, max_length=500)
-    animation_trigger: Optional[str] = Field(default=None, max_length=200)
-    educational_content: Optional[str] = Field(default=None, max_length=1000)
-    order_sequence: int = Field(default=1, ge=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-# Progress Tracking
-class StudentProgress(SQLModel, table=True):
-    __tablename__ = "student_progress"  # type: ignore[assignment]
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    student_id: int = Field(foreign_key="users.id")
-    activity_type: str = Field(max_length=100)  # quiz, vocabulary, diary, ar_experience
-    activity_id: int  # generic reference to any activity
-    progress_percentage: int = Field(default=0, ge=0, le=100)
-    completion_time: Optional[datetime] = Field(default=None)
-    score: Optional[int] = Field(default=None, ge=0)
-    attempts_count: int = Field(default=1, ge=1)
-    last_accessed: datetime = Field(default_factory=datetime.utcnow)
-    notes: Optional[str] = Field(default=None, max_length=500)
-
-    # Relationships
-    student: User = Relationship(back_populates="progress_records")
-
-
-# Application Usage Analytics
-class UsageAnalytics(SQLModel, table=True):
-    __tablename__ = "usage_analytics"  # type: ignore[assignment]
+class UserBadge(SQLModel, table=True):
+    __tablename__ = "user_badges"  # type: ignore[assignment]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="users.id")
-    feature_used: str = Field(max_length=100)  # learning_module, quiz, vocabulary, diary, ar
-    session_duration: int = Field(default=0, ge=0)  # in seconds
-    actions_performed: List[str] = Field(default=[], sa_column=Column(JSON))
-    device_info: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    badge_id: int = Field(foreign_key="badges.id")
+    earned_at: datetime = Field(default_factory=datetime.utcnow)
+    progress_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+
+    # Relationships
+    user: User = Relationship(back_populates="user_badges")
+    badge: Badge = Relationship(back_populates="user_badges")
 
 
-# Non-persistent schemas for validation and API
+class UserProgress(SQLModel, table=True):
+    __tablename__ = "user_progress"  # type: ignore[assignment]
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id")
+    quiz_level_id: Optional[int] = Field(default=None, foreign_key="quiz_levels.id")
+    historical_figure_id: Optional[int] = Field(default=None, foreign_key="historical_figures.id")
+    progress_type: str = Field(max_length=100)  # quiz_completed, diary_read, vocab_explored, ar_viewed
+    total_points: int = Field(default=0)
+    completion_percentage: float = Field(default=0.0)
+    streak_count: int = Field(default=0)
+    last_activity_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    # Relationships
+    user: User = Relationship(back_populates="user_progress")
+
+
+# Schema Models for API/Forms (non-persistent)
 class UserCreate(SQLModel, table=False):
-    username: str = Field(max_length=100)
+    username: str = Field(max_length=50)
     email: str = Field(max_length=255)
-    full_name: str = Field(max_length=200)
+    full_name: str = Field(max_length=100)
     role: UserRole = Field(default=UserRole.STUDENT)
     grade_level: Optional[GradeLevel] = Field(default=None)
     school_name: Optional[str] = Field(default=None, max_length=200)
 
 
 class UserUpdate(SQLModel, table=False):
-    full_name: Optional[str] = Field(default=None, max_length=200)
+    full_name: Optional[str] = Field(default=None, max_length=100)
     grade_level: Optional[GradeLevel] = Field(default=None)
     school_name: Optional[str] = Field(default=None, max_length=200)
     is_active: Optional[bool] = Field(default=None)
 
 
-class QuizSessionCreate(SQLModel, table=False):
-    student_id: int
-    level_id: int
-    total_questions: int = Field(ge=1)
+class QuizQuestionCreate(SQLModel, table=False):
+    quiz_level_id: int
+    question_text: str = Field(max_length=1000)
+    question_type: QuizQuestionType
+    options: List[str] = Field(default=[])
+    correct_answer: str = Field(max_length=500)
+    explanation: str = Field(max_length=1000)
+    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.EASY)
+    points_value: int = Field(default=10)
+    image_url: Optional[str] = Field(default=None, max_length=500)
 
 
-class QuizAnswerSubmit(SQLModel, table=False):
-    session_id: int
-    question_id: int
-    answer: str = Field(max_length=500)
-    time_taken: int = Field(ge=0)  # in seconds
+class QuizAttemptCreate(SQLModel, table=False):
+    user_id: int
+    quiz_level_id: int
+    max_score: int
 
 
 class VocabularyTermCreate(SQLModel, table=False):
     term: str = Field(max_length=200)
-    definition: str = Field(max_length=1000)
-    historical_period: HistoricalPeriod
-    pronunciation: Optional[str] = Field(default=None, max_length=200)
-    example_usage: Optional[str] = Field(default=None, max_length=500)
-    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
-    tags: List[str] = Field(default=[])
+    definition: str = Field(max_length=2000)
+    pronunciation: Optional[str] = Field(default=None, max_length=500)
+    audio_url: Optional[str] = Field(default=None, max_length=500)
+    image_urls: List[str] = Field(default=[])
+    historical_context: Optional[str] = Field(default=None, max_length=2000)
+    related_periods: List[int] = Field(default=[])
+    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.EASY)
 
 
-class LearningModuleCreate(SQLModel, table=False):
+class HistoricalFigureCreate(SQLModel, table=False):
+    name: str = Field(max_length=200)
+    birth_date: Optional[datetime] = Field(default=None)
+    death_date: Optional[datetime] = Field(default=None)
+    biography: str = Field(max_length=5000)
+    historical_period_id: int
+    role_description: str = Field(max_length=1000)
+    portrait_url: Optional[str] = Field(default=None, max_length=500)
+    achievements: List[str] = Field(default=[])
+    famous_quotes: List[str] = Field(default=[])
+    historical_significance: str = Field(max_length=2000)
+
+
+class DiaryEntryCreate(SQLModel, table=False):
+    historical_figure_id: int
     title: str = Field(max_length=200)
-    description: str = Field(max_length=1000)
-    grade_level: GradeLevel
-    historical_period: HistoricalPeriod
-    curriculum_alignment: str = Field(max_length=500)
-    learning_objectives: List[str] = Field(default=[])
-    teacher_id: int
-
-
-class ARExperienceCreate(SQLModel, table=False):
-    trigger_id: int
-    figure_id: Optional[int] = Field(default=None)
-    title: str = Field(max_length=200)
-    description: str = Field(max_length=500)
-    model_3d_url: str = Field(max_length=500)
-    audio_narration_url: Optional[str] = Field(default=None, max_length=500)
-    duration_seconds: int = Field(default=60, ge=1)
-    difficulty_level: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
-    educational_objectives: List[str] = Field(default=[])
+    content: str = Field(max_length=5000)
+    entry_date: datetime
+    emotional_tone: Optional[str] = Field(default=None, max_length=100)
+    key_events: List[str] = Field(default=[])
+    historical_context: str = Field(max_length=2000)
+    display_order: int = Field(default=0)
